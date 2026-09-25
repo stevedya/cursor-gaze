@@ -24,22 +24,26 @@ describe("saved capture session", () => {
   afterAll(() => vi.unstubAllGlobals());
 
   it("restores each grid separately and only deletes the selected session", async () => {
-    await clearStoredFrames(CAPTURE_PRESETS.standard);
-    await clearStoredFrames(CAPTURE_PRESETS.dense);
+    for (const preset of Object.values(CAPTURE_PRESETS)) await clearStoredFrames(preset);
     const frame = {
       toBlob: (callback: BlobCallback) => callback(new Blob(["frame bytes"], { type: "image/png" })),
     } as unknown as HTMLCanvasElement;
 
     await saveStoredFrame("3,3", frame, CAPTURE_PRESETS.standard);
     await saveStoredFrame("6,6", frame, CAPTURE_PRESETS.dense);
+    await saveStoredFrame("3,3", frame, CAPTURE_PRESETS.standardHigh);
+    await saveStoredFrame("6,6", frame, CAPTURE_PRESETS.denseHigh);
     const standard = await loadStoredFrames(CAPTURE_PRESETS.standard);
     expect([...standard.keys()]).toEqual(["3,3"]);
     expect(standard.get("3,3")?.width).toBe(500);
     expect([...(await loadStoredFrames(CAPTURE_PRESETS.dense)).keys()]).toEqual(["6,6"]);
+    expect([...(await loadStoredFrames(CAPTURE_PRESETS.standardHigh)).keys()]).toEqual(["3,3"]);
+    expect([...(await loadStoredFrames(CAPTURE_PRESETS.denseHigh)).keys()]).toEqual(["6,6"]);
 
     await clearStoredFrames(CAPTURE_PRESETS.standard);
     expect((await loadStoredFrames(CAPTURE_PRESETS.standard)).size).toBe(0);
     expect((await loadStoredFrames(CAPTURE_PRESETS.dense)).size).toBe(1);
-    await clearStoredFrames(CAPTURE_PRESETS.dense);
+    expect((await loadStoredFrames(CAPTURE_PRESETS.standardHigh)).size).toBe(1);
+    for (const preset of Object.values(CAPTURE_PRESETS)) await clearStoredFrames(preset);
   });
 });

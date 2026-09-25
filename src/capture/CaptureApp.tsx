@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createCapturePath, type GridPosition } from "../shared/grid";
-import { CAPTURE_CONFIG, CAPTURE_PRESETS, type CapturePresetId } from "./config";
+import { CAPTURE_CONFIG, CAPTURE_PRESETS, PRESET_BY_GRID_AND_DETAIL, type CaptureDetail, type CaptureGrid, type CapturePresetId } from "./config";
 import { captureFrame, openCamera, wait } from "./lib/camera";
 import { createExport, download, type ExportAssets } from "./lib/export";
 import { clearStoredFrames, loadStoredFrames, saveStoredFrame } from "./lib/session";
@@ -11,7 +11,8 @@ const keyOf = ({ row, column }: GridPosition) => `${row},${column}`;
 export function CaptureApp() {
   const [presetId, setPresetId] = useState<CapturePresetId>(() => {
     try {
-      return localStorage.getItem("cursor-gaze-preset") === "dense" ? "dense" : "standard";
+      const stored = localStorage.getItem("cursor-gaze-preset");
+      return stored && stored in CAPTURE_PRESETS ? stored as CapturePresetId : "standard";
     } catch {
       return "standard";
     }
@@ -246,6 +247,9 @@ export function CaptureApp() {
     setPresetId(nextId);
   };
 
+  const selectGrid = (grid: CaptureGrid) => void selectPreset(PRESET_BY_GRID_AND_DETAIL[grid][preset.detail]);
+  const selectDetail = (detail: CaptureDetail) => void selectPreset(PRESET_BY_GRID_AND_DETAIL[preset.grid][detail]);
+
   const reset = useCallback(async () => {
     if (!window.confirm("Delete this saved capture session and all its frames?")) return;
     pause();
@@ -325,8 +329,19 @@ export function CaptureApp() {
           <p className="intro-copy">Follow the moving dot with your head. The studio captures {total} directions and builds a ready to use sprite sheet.</p>
           <fieldset className="preset-picker" disabled={running || sessionLoading}>
             <legend>CAPTURE DENSITY</legend>
-            {(Object.values(CAPTURE_PRESETS) as Array<(typeof CAPTURE_PRESETS)[CapturePresetId]>).map((option) => <button key={option.id} type="button" className={presetId === option.id ? "selected" : ""} aria-pressed={presetId === option.id} onClick={() => void selectPreset(option.id)}>{option.label}<small>{option.gridSize ** 2} frames · ~{option.id === "standard" ? "1" : "3"} min</small></button>)}
+            {(["standard", "dense"] as const).map((grid) => {
+              const option = CAPTURE_PRESETS[PRESET_BY_GRID_AND_DETAIL[grid][preset.detail]];
+              return <button key={grid} type="button" className={preset.grid === grid ? "selected" : ""} aria-pressed={preset.grid === grid} onClick={() => selectGrid(grid)}>{option.label}<small>{option.gridSize ** 2} frames · ~{grid === "standard" ? "1" : "3"} min</small></button>;
+            })}
           </fieldset>
+          <fieldset className="preset-picker detail-picker" disabled={running || sessionLoading}>
+            <legend>OUTPUT DETAIL</legend>
+            {(["standard", "high"] as const).map((detail) => {
+              const option = CAPTURE_PRESETS[PRESET_BY_GRID_AND_DETAIL[preset.grid][detail]];
+              return <button key={detail} type="button" className={preset.detail === detail ? "selected" : ""} aria-pressed={preset.detail === detail} onClick={() => selectDetail(detail)}>{detail === "standard" ? "Standard" : "High detail"}<small>{option.frameWidth * option.gridSize}px sheet{detail === "high" ? " · desktop" : ""}</small></button>;
+            })}
+          </fieldset>
+          <p className="detail-note">Each setting keeps its own saved frames. Higher detail needs a new capture.</p>
           <div className="instructions"><span>01 &nbsp; Enable camera</span><span>02 &nbsp; Follow the dot</span><span>03 &nbsp; Export assets</span></div>
         </section>
 
@@ -363,7 +378,7 @@ export function CaptureApp() {
       </div>
 
       {assets && stage === "done" && <section className="results" aria-labelledby="results-heading">
-        <div className="results-heading"><div><p className="eyebrow">02 / ASSETS READY</p><h2 id="results-heading">Your {preset.label} portrait grid.</h2><p>Review the sprite and retake any frame below. Download both files into your portfolio’s public/portrait folder.</p></div>
+        <div className="results-heading"><div><p className="eyebrow">02 / ASSETS READY</p><h2 id="results-heading">Your {preset.label}{preset.detail === "high" ? " high-detail" : ""} portrait grid.</h2><p>Review the sprite and retake any frame below. Download both files into your portfolio’s public/portrait folder.</p></div>
           <div className="download-actions"><button onClick={() => download(assets.imageUrl, assets.manifest.image)}>Download sprite ↗</button><button onClick={() => download(assets.manifestUrl, "portrait-manifest.json")}>Download manifest ↗</button><a className="test-link" href="#/tester">Test portrait →</a></div></div>
         <div className="results-layout"><div className="sprite-preview"><img src={assets.imageUrl} alt={`Generated portrait sprite sheet arranged in ${preset.gridSize} rows and columns`} /></div>
           <div className="retake-area"><h3>Individual frames <span>CLICK TO RETAKE</span></h3><div className="thumbnail-grid" style={{ gridTemplateColumns: `repeat(${preset.gridSize}, minmax(0, 1fr))` }}>{Array.from({ length: total }, (_, index) => {

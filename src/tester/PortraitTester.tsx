@@ -93,7 +93,8 @@ export function PortraitTester() {
     return () => { cancelled = true; release(next); };
   }, [spriteFile, manifestFile]);
 
-  const selected = source === "standard" || source === "dense" ? saved[source] : source === "upload" ? uploaded : sample;
+  const selected = source === "sample" ? sample : source === "upload" ? uploaded : saved[source];
+  const savedPreset = source === "sample" || source === "upload" ? null : CAPTURE_PRESETS[source];
   const spriteSrc = selected?.imageUrl;
   const manifestSrc = selected?.manifestUrl;
   const selectSource = (value: Source) => {
@@ -124,11 +125,11 @@ export function PortraitTester() {
         <p className="tester-intro">Move your cursor anywhere on this page. The square on the right uses the same canvas component you’ll place in your portfolio.</p>
         <div className="source-switch" role="group" aria-label="Choose portrait source">
           <button className={source === "sample" ? "selected" : ""} onClick={() => selectSource("sample")}>Sample</button>
-          {(Object.values(CAPTURE_PRESETS)).map((preset) => <button key={preset.id} className={source === preset.id ? "selected" : ""} disabled={!saved[preset.id]} onClick={() => selectSource(preset.id)}>Saved {preset.label}</button>)}
+          {(Object.values(CAPTURE_PRESETS)).filter((preset) => saved[preset.id]).map((preset) => <button key={preset.id} className={source === preset.id ? "selected" : ""} onClick={() => selectSource(preset.id)}>Saved {preset.label}{preset.detail === "high" ? " HD" : ""}</button>)}
           <button className={source === "upload" ? "selected" : ""} onClick={() => selectSource("upload")}>My files</button>
         </div>
         {source === "sample" && <p className="source-note">Illustrated sample sprite, included so you can try the tracking immediately.</p>}
-        {(source === "standard" || source === "dense") && <p className="source-note">Your complete {CAPTURE_PRESETS[source].label} capture, restored from this browser.</p>}
+        {savedPreset && <p className="source-note">Your complete {savedPreset.label}{savedPreset.detail === "high" ? " high-detail" : ""} capture, restored from this browser.</p>}
         {source === "upload" && <div className="upload-fields">
           <label>Sprite sheet <span>WebP, PNG or JPEG</span><input type="file" accept="image/webp,image/png,image/jpeg" onChange={onSpriteChange} /></label>
           <label>Manifest <span>JSON</span><input type="file" accept=".json,application/json" onChange={onManifestChange} /></label>
