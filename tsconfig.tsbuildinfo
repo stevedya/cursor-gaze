@@ -1,0 +1,1 @@
+{"root":["./src/main.tsx","./src/capture/captureapp.tsx","./src/capture/config.ts","./src/capture/lib/camera.ts","./src/capture/lib/export.ts","./src/react/cursorportrait.tsx","./src/shared/grid.test.ts","./src/shared/grid.ts","./src/shared/manifest.ts","./vite.config.ts"],"version":"5.9.3"}
