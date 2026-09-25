@@ -32,7 +32,7 @@ The preview and exported frames are both mirrored. With a front-facing webcam, f
 
 Open **Test portrait** in the header, or visit `http://localhost:5173/#/tester` while the development server is running. The page has text on the left and a square canvas portrait on the right. Move your cursor anywhere in the page to test viewport tracking.
 
-Choose **Sample** for the included illustrated 7 × 7 sprite, **Saved capture** for a complete session stored in this browser, or **My files** to select your own sprite sheet and manifest. The uploader checks that the sprite dimensions match the manifest, then renders it with the same `CursorPortrait` component used on the production site. Uploaded files stay local to the browser tab and need to be selected again after a refresh.
+Choose **Sample** for the included illustrated 7 × 7 sprite, **Saved capture** for a complete session stored in this browser, or **My files** to select your own sprite sheet and manifest. The uploader checks that the sprite dimensions match the manifest, then renders it with the same `CursorPortrait` component used on the production site. The **Frame blend** slider lets you compare direct frame switching (`0 ms`) with a short transition. Uploaded files stay local to the browser tab and need to be selected again after a refresh.
 
 Captures made before automatic saving was added were held only in memory. If that earlier page was refreshed or reset before download, those frames cannot be restored by the new version.
 
@@ -58,6 +58,8 @@ export default function Hero() {
 
 The canvas fills its container width and has a square aspect ratio by default. Set its height or aspect ratio in CSS if your layout needs a different shape. `objectFit` is `"contain"` by default; use `"cover"` to fill a differently shaped canvas. The component reads rows, columns, and frame dimensions from the manifest, so a future 5 × 5 or 9 × 9 capture will work without changing runtime mapping.
 
+The component eases cursor movement and blends from the displayed frame to a new one for `110 ms` by default. Set `frameTransitionMs={0}` for direct switching, or tune it in the tester before choosing a value for your portfolio. A longer blend cannot create missing head angles and may produce a brief double image when adjacent photos are poorly aligned. Consistent camera position and a steady head during capture make the biggest difference; a denser future grid would help further.
+
 ### Props
 
 | Prop | Purpose |
@@ -66,6 +68,7 @@ The canvas fills its container width and has a square aspect ratio by default. S
 | `trackingMode` | `"viewport"` (default) or `"element"`. |
 | `trackingElementRef` | Optional ref for element tracking; defaults to the canvas parent. |
 | `smoothing` | Easing fraction per animation frame, default `0.18`. |
+| `frameTransitionMs` | Time to blend between selected frames, default `110`; `0` disables blending. |
 | `objectFit` | `"contain"` (default) or `"cover"`. |
 | `ariaLabel`, `ariaHidden` | Decorative by default. Supply a label to expose it as an image, or explicitly set `ariaHidden`. |
 | `onReady`, `onError` | Asset load callbacks. |

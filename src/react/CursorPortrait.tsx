@@ -9,6 +9,7 @@ export type CursorPortraitProps = {
   trackingMode?: "viewport" | "element";
   trackingElementRef?: RefObject<HTMLElement | null>;
   smoothing?: number;
+  frameTransitionMs?: number;
   objectFit?: "contain" | "cover";
   ariaLabel?: string;
   ariaHidden?: boolean;
@@ -23,6 +24,7 @@ export function CursorPortrait({
   trackingMode = "viewport",
   trackingElementRef,
   smoothing = 0.18,
+  frameTransitionMs = 110,
   objectFit = "contain",
   ariaLabel,
   ariaHidden,
@@ -32,8 +34,10 @@ export function CursorPortrait({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const readyRef = useRef(onReady);
   const errorRef = useRef(onError);
+  const transitionMsRef = useRef(frameTransitionMs);
   readyRef.current = onReady;
   errorRef.current = onError;
+  transitionMsRef.current = frameTransitionMs;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -56,14 +60,36 @@ export function CursorPortrait({
     let lastRow = -1;
     let lastColumn = -1;
     let raf = 0;
+    let lastTick = 0;
     let backingWidth = 0;
     let backingHeight = 0;
+    let transitionStart = 0;
+    let transitioning = false;
+    const transitionCanvas = document.createElement("canvas");
+    const transitionContext = transitionCanvas.getContext("2d");
     const easing = Math.min(1, Math.max(0.01, Number.isFinite(smoothing) ? smoothing : 0.18));
 
-    const draw = (force = false) => {
-      if (!manifest || !sprite || !backingWidth || !backingHeight) return;
+    const draw = (force = false, now = performance.now()): boolean => {
+      if (!manifest || !sprite || !backingWidth || !backingHeight) return false;
       const { row, column } = normalizedToCell(currentX, currentY, manifest.rows, manifest.columns);
-      if (!force && row === lastRow && column === lastColumn) return;
+      const changed = row !== lastRow || column !== lastColumn;
+      const wasTransitioning = transitioning;
+      const duration = Math.min(300, Math.max(0, Number.isFinite(transitionMsRef.current) ? transitionMsRef.current : 110));
+      if (changed && !force && lastRow >= 0 && duration > 0 && transitionContext &&
+          !motionQuery.matches && pointerQuery.matches) {
+        if (transitionCanvas.width !== backingWidth || transitionCanvas.height !== backingHeight) {
+          transitionCanvas.width = backingWidth;
+          transitionCanvas.height = backingHeight;
+        }
+        // Snapshot the currently displayed blend, so fast cursor moves do not flash an old frame.
+        transitionContext.clearRect(0, 0, backingWidth, backingHeight);
+        transitionContext.drawImage(canvas, 0, 0);
+        transitionStart = now;
+        transitioning = true;
+      } else if (changed || force || duration === 0 || motionQuery.matches || !pointerQuery.matches) {
+        transitioning = false;
+      }
+      if (!force && !changed && !transitioning && !wasTransitioning) return false;
       lastRow = row;
       lastColumn = column;
       const { sourceX, sourceY } = getSpriteSource({ row, column, frameWidth: manifest.frameWidth, frameHeight: manifest.frameHeight });
@@ -73,6 +99,16 @@ export function CursorPortrait({
       const frameRatio = manifest.frameWidth / manifest.frameHeight;
       const canvasRatio = width / height;
       context.clearRect(0, 0, width, height);
+      if (transitioning) {
+        const progress = Math.min(1, (now - transitionStart) / duration);
+        if (progress < 1) {
+          context.save();
+          context.setTransform(1, 0, 0, 1, 0, 0);
+          context.drawImage(transitionCanvas, 0, 0);
+          context.restore();
+          context.globalAlpha = progress;
+        } else transitioning = false;
+      }
       if (objectFit === "contain") {
         const drawWidth = canvasRatio > frameRatio ? height * frameRatio : width;
         const drawHeight = canvasRatio > frameRatio ? height : width / frameRatio;
@@ -87,6 +123,8 @@ export function CursorPortrait({
           sourceY + (manifest.frameHeight - sourceHeight) / 2,
           sourceWidth, sourceHeight, 0, 0, width, height);
       }
+      context.globalAlpha = 1;
+      return transitioning;
     };
 
     const resize = () => {
@@ -104,23 +142,26 @@ export function CursorPortrait({
       draw(true);
     };
 
-    const animate = () => {
+    const animate = (now: number) => {
       raf = 0;
       if (motionQuery.matches || !pointerQuery.matches) {
         currentX = targetX = 0.5;
         currentY = targetY = 0.5;
-        draw();
+        draw(true, now);
         return;
       }
-      currentX += (targetX - currentX) * easing;
-      currentY += (targetY - currentY) * easing;
+      const elapsed = lastTick ? Math.min(64, now - lastTick) : 1000 / 60;
+      lastTick = now;
+      const step = 1 - Math.pow(1 - easing, elapsed / (1000 / 60));
+      currentX += (targetX - currentX) * step;
+      currentY += (targetY - currentY) * step;
       if (Math.abs(targetX - currentX) < 0.001) currentX = targetX;
       if (Math.abs(targetY - currentY) < 0.001) currentY = targetY;
-      draw();
-      if (currentX !== targetX || currentY !== targetY) raf = requestAnimationFrame(animate);
+      const blending = draw(false, now);
+      if (currentX !== targetX || currentY !== targetY || blending) raf = requestAnimationFrame(animate);
     };
 
-    const schedule = () => { if (!raf) raf = requestAnimationFrame(animate); };
+    const schedule = () => { if (!raf) { lastTick = 0; raf = requestAnimationFrame(animate); } };
     const returnToCenter = () => { targetX = targetY = 0.5; schedule(); };
     const onPointerMove = (event: PointerEvent) => {
       if (event.pointerType !== "mouse" && event.pointerType !== "pen") return;

@@ -32,6 +32,7 @@ export function PortraitTester() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [frameTransitionMs, setFrameTransitionMs] = useState(110);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,6 +132,12 @@ export function PortraitTester() {
         </div>}
         {uploadError && <p className="error" role="alert">{uploadError}</p>}
         {previewError && <p className="error" role="alert">{previewError}</p>}
+        <div className="transition-control">
+          <label htmlFor="transition-length">Frame blend <strong>{frameTransitionMs === 0 ? "Off" : `${frameTransitionMs} ms`}</strong></label>
+          <input id="transition-length" type="range" min="0" max="200" step="10" value={frameTransitionMs}
+            onChange={(event) => setFrameTransitionMs(Number(event.target.value))} />
+          <p>Short blends soften the steps. Longer blends can make a face look doubled.</p>
+        </div>
         <div className="tester-status"><span className={ready ? "status-ready" : ""} />{ready ? "PORTRAIT READY · MOVE YOUR CURSOR" : "WAITING FOR PORTRAIT"}</div>
       </section>
       <section className="tester-portrait" aria-label="Interactive portrait preview">
@@ -140,6 +147,7 @@ export function PortraitTester() {
             spriteSrc={spriteSrc}
             manifestSrc={manifestSrc}
             trackingMode="viewport"
+            frameTransitionMs={frameTransitionMs}
             ariaLabel="Portrait that follows the cursor"
             onReady={() => { setPreviewError(null); setReady(true); }}
             onError={(error) => { setReady(false); setPreviewError(error.message); }}
