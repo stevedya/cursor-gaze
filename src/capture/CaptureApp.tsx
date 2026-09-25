@@ -1,18 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createCapturePath, type GridPosition } from "../shared/grid";
-import { CAPTURE_CONFIG } from "./config";
+import { CAPTURE_CONFIG, CAPTURE_PRESETS, type CapturePresetId } from "./config";
 import { captureFrame, openCamera, wait } from "./lib/camera";
 import { createExport, download, type ExportAssets } from "./lib/export";
 import { clearStoredFrames, loadStoredFrames, saveStoredFrame } from "./lib/session";
 
 type Stage = "idle" | "countdown" | "capturing" | "preparing" | "done" | "retaking";
-const path = createCapturePath(CAPTURE_CONFIG.gridSize, CAPTURE_CONFIG.gridSize);
-const total = path.length;
 const keyOf = ({ row, column }: GridPosition) => `${row},${column}`;
-const center = path[0];
 
 export function CaptureApp() {
+  const [presetId, setPresetId] = useState<CapturePresetId>(() => {
+    try {
+      return localStorage.getItem("cursor-gaze-preset") === "dense" ? "dense" : "standard";
+    } catch {
+      return "standard";
+    }
+  });
+  const preset = CAPTURE_PRESETS[presetId];
+  const path = useMemo(() => createCapturePath(preset.gridSize, preset.gridSize), [preset.gridSize]);
+  const total = path.length;
+  const center = path[0];
   const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraFrameRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const runRef = useRef<AbortController | null>(null);
   const framesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
@@ -29,6 +38,36 @@ export function CaptureApp() {
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(new Map());
   const [sessionLoading, setSessionLoading] = useState(true);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
+  const [targetOrigin, setTargetOrigin] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+
+  useEffect(() => {
+    try { localStorage.setItem("cursor-gaze-preset", presetId); } catch { /* Browser storage is optional. */ }
+  }, [presetId]);
+
+  useLayoutEffect(() => {
+    const update = () => {
+      const bounds = cameraFrameRef.current?.getBoundingClientRect();
+      if (bounds) setTargetOrigin({ x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 });
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    if (cameraFrameRef.current) observer.observe(cameraFrameRef.current);
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, { passive: true });
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update);
+    };
+  }, []);
+
+  const focusCamera = () => {
+    const frame = cameraFrameRef.current;
+    if (!frame) return;
+    frame.scrollIntoView({ block: "center", behavior: "instant" });
+    const bounds = frame.getBoundingClientRect();
+    setTargetOrigin({ x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 });
+  };
 
   const clearAssets = useCallback(() => {
     if (assetsRef.current) {
@@ -52,13 +91,13 @@ export function CaptureApp() {
     let cancelled = false;
     const restore = async () => {
       try {
-        const saved = await loadStoredFrames();
+        const saved = await loadStoredFrames(preset);
         if (cancelled) return;
         framesRef.current = saved;
         setCaptured(saved.size);
         setThumbnails(new Map(Array.from(saved, ([key, frame]) => [key, frame.toDataURL("image/jpeg", 0.65)])));
         if (saved.size === total) {
-          const restoredAssets = await createExport(saved);
+          const restoredAssets = await createExport(saved, preset);
           if (cancelled) {
             URL.revokeObjectURL(restoredAssets.imageUrl);
             URL.revokeObjectURL(restoredAssets.manifestUrl);
@@ -76,7 +115,7 @@ export function CaptureApp() {
     };
     void restore();
     return () => { cancelled = true; };
-  }, []);
+  }, [presetId]);
 
   const enableCamera = useCallback(async () => {
     setCameraBusy(true);
@@ -109,11 +148,11 @@ export function CaptureApp() {
 
   const saveFrame = async (position: GridPosition) => {
     if (!videoRef.current) throw new Error("Camera preview is unavailable.");
-    const frame = captureFrame(videoRef.current);
+    const frame = captureFrame(videoRef.current, preset);
     framesRef.current.set(keyOf(position), frame);
     setThumbnails((previous) => new Map(previous).set(keyOf(position), frame.toDataURL("image/jpeg", 0.65)));
     setCaptured(framesRef.current.size);
-    const pending = saveStoredFrame(keyOf(position), frame);
+    const pending = saveStoredFrame(keyOf(position), frame, preset);
     pendingSaveRef.current = pending;
     try {
       await pending;
@@ -127,7 +166,7 @@ export function CaptureApp() {
   const finish = async (signal: AbortSignal) => {
     if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
     setStage("preparing");
-    const next = await createExport(framesRef.current);
+    const next = await createExport(framesRef.current, preset);
     if (signal.aborted) {
       URL.revokeObjectURL(next.imageUrl);
       URL.revokeObjectURL(next.manifestUrl);
@@ -148,6 +187,7 @@ export function CaptureApp() {
   const start = useCallback(async () => {
     if (!cameraReady || runRef.current || sessionLoading || framesRef.current.size === total) return;
     await pendingSaveRef.current?.catch(() => undefined);
+    focusCamera();
     const controller = new AbortController();
     runRef.current = controller;
     setError(null);
@@ -169,7 +209,7 @@ export function CaptureApp() {
     } finally {
       if (runRef.current === controller) runRef.current = null;
     }
-  }, [cameraReady, sessionLoading]);
+  }, [cameraReady, sessionLoading, presetId, path, center, total]);
 
   const rebuildSaved = async () => {
     if (framesRef.current.size !== total || runRef.current) return;
@@ -189,14 +229,29 @@ export function CaptureApp() {
     runRef.current = null;
     setTarget(center);
     setStage(assetsRef.current ? "done" : "idle");
-  }, []);
+  }, [center]);
+
+  const selectPreset = async (nextId: CapturePresetId) => {
+    if (nextId === presetId || runRef.current || stage === "preparing" || sessionLoading) return;
+    setSessionLoading(true);
+    await pendingSaveRef.current?.catch(() => undefined);
+    clearAssets();
+    framesRef.current = new Map();
+    setThumbnails(new Map());
+    setCaptured(0);
+    setTarget(createCapturePath(CAPTURE_PRESETS[nextId].gridSize, CAPTURE_PRESETS[nextId].gridSize)[0]);
+    setError(null);
+    setStorageWarning(null);
+    setStage("idle");
+    setPresetId(nextId);
+  };
 
   const reset = useCallback(async () => {
     if (!window.confirm("Delete this saved capture session and all its frames?")) return;
     pause();
     try {
       await pendingSaveRef.current;
-      await clearStoredFrames();
+      await clearStoredFrames(preset);
     } catch {
       setStorageWarning("Could not delete the saved browser session. Check browser storage permissions.");
       return;
@@ -209,10 +264,11 @@ export function CaptureApp() {
     setError(null);
     setStorageWarning(null);
     setStage("idle");
-  }, [clearAssets, pause]);
+  }, [clearAssets, pause, presetId, center]);
 
   const retake = async (position: GridPosition) => {
     if (stage !== "done" || !cameraReady || runRef.current) return;
+    focusCamera();
     const controller = new AbortController();
     runRef.current = controller;
     setError(null);
@@ -248,6 +304,12 @@ export function CaptureApp() {
   const active = stage === "countdown" || stage === "capturing" || stage === "retaking";
   const running = active || stage === "preparing";
   const targetLabel = `Row ${target.row + 1}, column ${target.column + 1}`;
+  const targetCoordinate = (value: number, origin: number, extent: number) => {
+    const edge = extent * 0.05;
+    return value <= 0.5
+      ? edge + (origin - edge) * value * 2
+      : origin + (extent - edge - origin) * (value - 0.5) * 2;
+  };
 
   return (
     <main className="studio">
@@ -260,12 +322,16 @@ export function CaptureApp() {
         <section className="intro" aria-labelledby="heading">
           <p className="eyebrow">01 / PORTRAIT CAPTURE</p>
           <h1 id="heading">Make your portrait<br /><em>look alive.</em></h1>
-          <p className="intro-copy">Follow the moving dot with your head. The studio captures 49 directions and builds a ready to use sprite sheet.</p>
+          <p className="intro-copy">Follow the moving dot with your head. The studio captures {total} directions and builds a ready to use sprite sheet.</p>
+          <fieldset className="preset-picker" disabled={running || sessionLoading}>
+            <legend>CAPTURE DENSITY</legend>
+            {(Object.values(CAPTURE_PRESETS) as Array<(typeof CAPTURE_PRESETS)[CapturePresetId]>).map((option) => <button key={option.id} type="button" className={presetId === option.id ? "selected" : ""} aria-pressed={presetId === option.id} onClick={() => void selectPreset(option.id)}>{option.label}<small>{option.gridSize ** 2} frames · ~{option.id === "standard" ? "1" : "3"} min</small></button>)}
+          </fieldset>
           <div className="instructions"><span>01 &nbsp; Enable camera</span><span>02 &nbsp; Follow the dot</span><span>03 &nbsp; Export assets</span></div>
         </section>
 
         <section className="preview-area" aria-label="Camera preview">
-          <div className="camera-frame">
+          <div className="camera-frame" ref={cameraFrameRef}>
             <video ref={videoRef} className="camera-video" autoPlay playsInline muted aria-label="Mirrored live camera preview" />
             {!cameraReady && <div className="camera-empty"><span className="camera-icon">◎</span><strong>Camera preview</strong><small>Enable your camera to begin.</small><button className="camera-start-button" onClick={() => void enableCamera()} disabled={cameraBusy || sessionLoading}>{cameraBusy ? "Opening camera…" : "Enable camera ↗"}</button></div>}
             <div className="frame-corner corner-tl" /><div className="frame-corner corner-tr" />
@@ -297,18 +363,18 @@ export function CaptureApp() {
       </div>
 
       {assets && stage === "done" && <section className="results" aria-labelledby="results-heading">
-        <div className="results-heading"><div><p className="eyebrow">02 / ASSETS READY</p><h2 id="results-heading">Your 7 × 7 portrait grid.</h2><p>Review the sprite and retake any frame below. Download both files into your portfolio’s public/portrait folder.</p></div>
+        <div className="results-heading"><div><p className="eyebrow">02 / ASSETS READY</p><h2 id="results-heading">Your {preset.label} portrait grid.</h2><p>Review the sprite and retake any frame below. Download both files into your portfolio’s public/portrait folder.</p></div>
           <div className="download-actions"><button onClick={() => download(assets.imageUrl, assets.manifest.image)}>Download sprite ↗</button><button onClick={() => download(assets.manifestUrl, "portrait-manifest.json")}>Download manifest ↗</button><a className="test-link" href="#/tester">Test portrait →</a></div></div>
-        <div className="results-layout"><div className="sprite-preview"><img src={assets.imageUrl} alt="Generated portrait sprite sheet arranged in seven rows and columns" /></div>
-          <div className="retake-area"><h3>Individual frames <span>CLICK TO RETAKE</span></h3><div className="thumbnail-grid">{Array.from({ length: total }, (_, index) => {
-            const row = Math.floor(index / CAPTURE_CONFIG.gridSize);
-            const column = index % CAPTURE_CONFIG.gridSize;
+        <div className="results-layout"><div className="sprite-preview"><img src={assets.imageUrl} alt={`Generated portrait sprite sheet arranged in ${preset.gridSize} rows and columns`} /></div>
+          <div className="retake-area"><h3>Individual frames <span>CLICK TO RETAKE</span></h3><div className="thumbnail-grid" style={{ gridTemplateColumns: `repeat(${preset.gridSize}, minmax(0, 1fr))` }}>{Array.from({ length: total }, (_, index) => {
+            const row = Math.floor(index / preset.gridSize);
+            const column = index % preset.gridSize;
             const position = path.find((item) => item.row === row && item.column === column)!;
             return <button key={`${row},${column}`} title={`Retake row ${row + 1}, column ${column + 1}`} aria-label={`Retake row ${row + 1}, column ${column + 1}`} onClick={() => void retake(position)}><img src={thumbnails.get(`${row},${column}`)} alt="" /></button>;
           })}</div></div></div>
       </section>}
 
-      {active && <div className="target-layer" aria-hidden="true"><div className="target-dot" style={{ left: `${5 + target.normalizedX * 90}%`, top: `${8 + target.normalizedY * 84}%`, transitionDuration: `${CAPTURE_CONFIG.moveDurationMs}ms` }}><span /></div>{(stage === "countdown" || stage === "retaking") && <div className="countdown-overlay">{countdown}</div>}</div>}
+      {active && <div className="target-layer" aria-hidden="true"><div className="target-dot" style={{ left: targetCoordinate(target.normalizedX, targetOrigin.x, window.innerWidth), top: targetCoordinate(target.normalizedY, targetOrigin.y, window.innerHeight), transitionDuration: `${CAPTURE_CONFIG.moveDurationMs}ms` }}><span /></div>{(stage === "countdown" || stage === "retaking") && <div className="countdown-overlay">{countdown}</div>}</div>}
     </main>
   );
 }

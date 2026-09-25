@@ -1,6 +1,6 @@
 # Cursor Gaze
 
-A local capture studio and a small React canvas component for a cursor-following portrait. The capture tool makes one 7 × 7 sprite sheet and a JSON manifest. The production component loads those two assets and draws a single frame at a time.
+A local capture studio and a small React canvas component for a cursor-following portrait. The capture tool makes a 7 × 7 or 13 × 13 sprite sheet and a JSON manifest. The production component loads those two assets and draws a single frame at a time.
 
 ## Run the capture studio
 
@@ -9,11 +9,11 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite. Camera access works on `localhost` or HTTPS. Click **Enable camera** in the preview or control panel and accept the browser prompt. If permission was previously blocked, open the site controls beside the address bar, set Camera to Allow, and refresh. Sit centered with some space around your head, then press **Start capture** (or Space). After a three-second countdown, follow the moving dot with your head and eyes. The path begins in the center and spirals outward, pausing at every target before taking a frame.
+Open the local URL printed by Vite. Camera access works on `localhost` or HTTPS. Choose **7 × 7** for a quicker capture or **13 × 13** for twice as many steps along each axis, then click **Enable camera** in the preview or control panel and accept the browser prompt. If permission was previously blocked, open the site controls beside the address bar, set Camera to Allow, and refresh. Sit centered with some space around your head, then press **Start capture** (or Space). After a three-second countdown, follow the moving dot with your head and eyes. The path begins at the center of the camera preview and spirals outward, pausing at every target before taking a frame.
 
-Each frame is saved automatically to IndexedDB in the current browser. Escape or **Pause and keep frames** stops the run without deleting photos. Refreshing restores a complete capture, or lets you resume at the remaining positions. **Delete saved session** asks for confirmation before clearing the frames. Browser storage is local to that browser and site; clearing site data or using another browser removes access to it. Downloaded files are the durable backup.
+Each frame is saved automatically to IndexedDB in the current browser. The two grid sizes have separate saved sessions, and switching between them keeps each set of frames. The selected grid size is remembered after refresh. Escape or **Pause and keep frames** stops the run without deleting photos. Refreshing restores a complete capture, or lets you resume at the remaining positions. **Delete saved session** asks for confirmation before clearing the selected grid's frames. Browser storage is local to that browser and site; clearing site data or using another browser removes access to it. Downloaded files are the durable backup.
 
-Once all 49 positions are captured, review the sprite sheet. Click a thumbnail to retake that position. Download both files and put them together in your portfolio:
+Once all 49 or 169 positions are captured, review the sprite sheet. Click a thumbnail to retake that position. Download both files and put them together in your portfolio:
 
 ```text
 public/
@@ -24,7 +24,7 @@ public/
 
 Some browsers cannot encode WebP from canvas. The tool then exports `portrait-sprite.png` and writes that filename into the manifest. PNG is larger but lossless. Use the filename actually downloaded.
 
-Capture timing, grid size, output frame dimensions, and WebP quality live in [`src/capture/config.ts`](src/capture/config.ts). The default is a 500 × 500 frame, producing a 3500 × 3500 sprite. This is a practical browser size for a hero portrait; raise it if your final display needs more detail and the device can handle the memory. The camera requests roughly 1920 × 1080 and falls back to its default mode when needed.
+Capture timing, grid sizes, output frame dimensions, and WebP quality live in [`src/capture/config.ts`](src/capture/config.ts). The 7 × 7 setting uses 500 × 500 frames and produces a 3500 × 3500 sprite. The 13 × 13 setting uses 300 × 300 frames and produces a 3900 × 3900 sprite to keep the sheet at a practical browser size. The denser capture takes roughly three minutes and reduces visible jumps between directions, though it still switches between discrete frames. The camera requests roughly 1920 × 1080 and falls back to its default mode when needed.
 
 The preview and exported frames are both mirrored. With a front-facing webcam, following a target on the left then produces a portrait that appears to look left to the viewer. If your camera driver applies its own mirroring, check the completed grid before using it. The capture tool uses a centered square crop; sit consistently in frame throughout the session.
 
@@ -32,7 +32,7 @@ The preview and exported frames are both mirrored. With a front-facing webcam, f
 
 Open **Test portrait** in the header, or visit `http://localhost:5173/#/tester` while the development server is running. The page has text on the left and a square canvas portrait on the right. Move your cursor anywhere in the page to test viewport tracking.
 
-Choose **Sample** for the included illustrated 7 × 7 sprite, **Saved capture** for a complete session stored in this browser, or **My files** to select your own sprite sheet and manifest. The uploader checks that the sprite dimensions match the manifest, then renders it with the same `CursorPortrait` component used on the production site. The **Frame blend** slider lets you compare direct frame switching (`0 ms`) with a short transition. Uploaded files stay local to the browser tab and need to be selected again after a refresh.
+Choose **Sample** for the included illustrated 7 × 7 sprite, **Saved 7 × 7** or **Saved 13 × 13** for a complete session stored in this browser, or **My files** to select your own sprite sheet and manifest. The uploader checks that the sprite dimensions match the manifest, then renders it with the same `CursorPortrait` component used on the production site. Uploaded files stay local to the browser tab and need to be selected again after a refresh.
 
 Captures made before automatic saving was added were held only in memory. If that earlier page was refreshed or reset before download, those frames cannot be restored by the new version.
 
@@ -56,9 +56,7 @@ export default function Hero() {
 }
 ```
 
-The canvas fills its container width and has a square aspect ratio by default. Set its height or aspect ratio in CSS if your layout needs a different shape. `objectFit` is `"contain"` by default; use `"cover"` to fill a differently shaped canvas. The component reads rows, columns, and frame dimensions from the manifest, so a future 5 × 5 or 9 × 9 capture will work without changing runtime mapping.
-
-The component eases cursor movement and blends from the displayed frame to a new one for `110 ms` by default. Set `frameTransitionMs={0}` for direct switching, or tune it in the tester before choosing a value for your portfolio. A longer blend cannot create missing head angles and may produce a brief double image when adjacent photos are poorly aligned. Consistent camera position and a steady head during capture make the biggest difference; a denser future grid would help further.
+The canvas fills its container width and has a square aspect ratio by default. Set its height or aspect ratio in CSS if your layout needs a different shape. `objectFit` is `"contain"` by default; use `"cover"` to fill a differently shaped canvas. The component reads rows, columns, and frame dimensions from the manifest, so either capture size works without changing runtime mapping.
 
 ### Props
 
@@ -68,7 +66,6 @@ The component eases cursor movement and blends from the displayed frame to a new
 | `trackingMode` | `"viewport"` (default) or `"element"`. |
 | `trackingElementRef` | Optional ref for element tracking; defaults to the canvas parent. |
 | `smoothing` | Easing fraction per animation frame, default `0.18`. |
-| `frameTransitionMs` | Time to blend between selected frames, default `110`; `0` disables blending. |
 | `objectFit` | `"contain"` (default) or `"cover"`. |
 | `ariaLabel`, `ariaHidden` | Decorative by default. Supply a label to expose it as an image, or explicitly set `ariaHidden`. |
 | `onReady`, `onError` | Asset load callbacks. |
@@ -101,4 +98,4 @@ Tests cover mapping, clamping, source coordinates, the full capture path, and sa
 
 ## Future improvements
 
-Grid size is centralized but the capture UI currently fixes it at 7 × 7. Useful next steps are a grid size selector, automatic face detection and alignment, transparent background removal, multiple expressions, mobile device orientation support, and WebGL interpolation for genuinely continuous movement.
+Useful next steps are automatic face detection and alignment, transparent background removal, multiple expressions, mobile device orientation support, and WebGL interpolation for genuinely continuous movement.

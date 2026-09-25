@@ -1,10 +1,12 @@
-import { CAPTURE_CONFIG } from "../config";
+import type { CapturePreset } from "../config";
 
 const DATABASE_NAME = "cursor-gaze-capture";
 const STORE_NAME = "frames";
 
 type StoredFrame = {
   key: string;
+  cellKey?: string;
+  presetId?: string;
   blob: Blob;
   gridSize: number;
   frameWidth: number;
@@ -34,18 +36,20 @@ function toBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   });
 }
 
-export async function saveStoredFrame(key: string, frame: HTMLCanvasElement): Promise<void> {
+export async function saveStoredFrame(key: string, frame: HTMLCanvasElement, preset: CapturePreset): Promise<void> {
   const blob = await toBlob(frame);
   const database = await openDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction(STORE_NAME, "readwrite");
       const record: StoredFrame = {
-        key,
+        key: `${preset.id}:${key}`,
+        cellKey: key,
+        presetId: preset.id,
         blob,
-        gridSize: CAPTURE_CONFIG.gridSize,
-        frameWidth: CAPTURE_CONFIG.frameWidth,
-        frameHeight: CAPTURE_CONFIG.frameHeight,
+        gridSize: preset.gridSize,
+        frameWidth: preset.frameWidth,
+        frameHeight: preset.frameHeight,
       };
       transaction.objectStore(STORE_NAME).put(record);
       transaction.oncomplete = () => resolve();
@@ -75,7 +79,7 @@ async function blobToCanvas(blob: Blob): Promise<HTMLCanvasElement> {
   }
 }
 
-export async function loadStoredFrames(): Promise<Map<string, HTMLCanvasElement>> {
+export async function loadStoredFrames(preset: CapturePreset): Promise<Map<string, HTMLCanvasElement>> {
   const database = await openDatabase();
   let records: StoredFrame[];
   try {
@@ -90,21 +94,31 @@ export async function loadStoredFrames(): Promise<Map<string, HTMLCanvasElement>
   }
   const frames = new Map<string, HTMLCanvasElement>();
   for (const record of records) {
-    if (record.gridSize === CAPTURE_CONFIG.gridSize &&
-        record.frameWidth === CAPTURE_CONFIG.frameWidth &&
-        record.frameHeight === CAPTURE_CONFIG.frameHeight && record.blob instanceof Blob) {
-      frames.set(record.key, await blobToCanvas(record.blob));
+    if (record.gridSize === preset.gridSize &&
+        record.frameWidth === preset.frameWidth &&
+        record.frameHeight === preset.frameHeight && record.blob instanceof Blob &&
+        (record.presetId === preset.id || (!record.presetId && preset.id === "standard"))) {
+      frames.set(record.cellKey ?? record.key, await blobToCanvas(record.blob));
     }
   }
   return frames;
 }
 
-export async function clearStoredFrames(): Promise<void> {
+export async function clearStoredFrames(preset: CapturePreset): Promise<void> {
   const database = await openDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction(STORE_NAME, "readwrite");
-      transaction.objectStore(STORE_NAME).clear();
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.getAll();
+      request.onsuccess = () => {
+        for (const record of request.result as StoredFrame[]) {
+          if (record.presetId === preset.id || (!record.presetId && preset.id === "standard" &&
+              record.gridSize === preset.gridSize && record.frameWidth === preset.frameWidth)) {
+            store.delete(record.key);
+          }
+        }
+      };
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error ?? new Error("Could not delete the saved session."));
     });

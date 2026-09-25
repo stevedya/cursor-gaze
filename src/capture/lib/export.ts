@@ -1,5 +1,5 @@
 import type { PortraitSpriteManifest } from "../../shared/manifest";
-import { CAPTURE_CONFIG } from "../config";
+import { CAPTURE_CONFIG, type CapturePreset } from "../config";
 
 export type ExportAssets = {
   imageUrl: string;
@@ -13,8 +13,8 @@ function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number)
   });
 }
 
-export async function createExport(frames: Map<string, HTMLCanvasElement>): Promise<ExportAssets> {
-  const { gridSize, frameWidth, frameHeight } = CAPTURE_CONFIG;
+export async function createExport(frames: Map<string, HTMLCanvasElement>, preset: CapturePreset): Promise<ExportAssets> {
+  const { gridSize, frameWidth, frameHeight } = preset;
   if (frames.size !== gridSize * gridSize) throw new Error("Capture every grid position before exporting.");
   const sprite = document.createElement("canvas");
   sprite.width = frameWidth * gridSize;

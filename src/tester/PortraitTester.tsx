@@ -3,9 +3,9 @@ import { CursorPortrait } from "../react/CursorPortrait";
 import { parseManifest, type PortraitSpriteManifest } from "../shared/manifest";
 import { createExport, type ExportAssets } from "../capture/lib/export";
 import { loadStoredFrames } from "../capture/lib/session";
-import { CAPTURE_CONFIG } from "../capture/config";
+import { CAPTURE_PRESETS, type CapturePresetId } from "../capture/config";
 
-type Source = "sample" | "saved" | "upload";
+type Source = "sample" | CapturePresetId | "upload";
 type UploadedAssets = {
   imageUrl: string;
   manifestUrl: string;
@@ -25,31 +25,34 @@ function release(assets: ExportAssets | UploadedAssets | null) {
 
 export function PortraitTester() {
   const [source, setSource] = useState<Source>("sample");
-  const [saved, setSaved] = useState<ExportAssets | null>(null);
+  const [saved, setSaved] = useState<Partial<Record<CapturePresetId, ExportAssets>>>({});
   const [spriteFile, setSpriteFile] = useState<File | null>(null);
   const [manifestFile, setManifestFile] = useState<File | null>(null);
   const [uploaded, setUploaded] = useState<UploadedAssets | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
-  const [frameTransitionMs, setFrameTransitionMs] = useState(110);
 
   useEffect(() => {
     let cancelled = false;
-    let assets: ExportAssets | null = null;
+    const assets: Partial<Record<CapturePresetId, ExportAssets>> = {};
     const load = async () => {
-      try {
-        const frames = await loadStoredFrames();
-        if (frames.size !== CAPTURE_CONFIG.gridSize * CAPTURE_CONFIG.gridSize) return;
-        assets = await createExport(frames);
-        if (!cancelled) setSaved(assets);
-        else release(assets);
-      } catch {
-        // The sample and file upload remain usable when browser storage is unavailable.
+      for (const preset of Object.values(CAPTURE_PRESETS)) {
+        if (cancelled) break;
+        try {
+          const frames = await loadStoredFrames(preset);
+          if (cancelled) break;
+          if (frames.size !== preset.gridSize * preset.gridSize) continue;
+          assets[preset.id] = await createExport(frames, preset);
+          if (!cancelled) setSaved({ ...assets });
+        } catch {
+          // The sample and file upload remain usable when browser storage is unavailable.
+        }
       }
+      if (cancelled) Object.values(assets).forEach(release);
     };
     void load();
-    return () => { cancelled = true; release(assets); };
+    return () => { cancelled = true; Object.values(assets).forEach(release); };
   }, []);
 
   useEffect(() => {
@@ -89,7 +92,7 @@ export function PortraitTester() {
     return () => { cancelled = true; release(next); };
   }, [spriteFile, manifestFile]);
 
-  const selected = source === "saved" ? saved : source === "upload" ? uploaded : sample;
+  const selected = source === "standard" || source === "dense" ? saved[source] : source === "upload" ? uploaded : sample;
   const spriteSrc = selected?.imageUrl;
   const manifestSrc = selected?.manifestUrl;
   const selectSource = (value: Source) => {
@@ -120,11 +123,11 @@ export function PortraitTester() {
         <p className="tester-intro">Move your cursor anywhere on this page. The square on the right uses the same canvas component you’ll place in your portfolio.</p>
         <div className="source-switch" role="group" aria-label="Choose portrait source">
           <button className={source === "sample" ? "selected" : ""} onClick={() => selectSource("sample")}>Sample</button>
-          <button className={source === "saved" ? "selected" : ""} disabled={!saved} onClick={() => selectSource("saved")}>Saved capture</button>
+          {(Object.values(CAPTURE_PRESETS)).map((preset) => <button key={preset.id} className={source === preset.id ? "selected" : ""} disabled={!saved[preset.id]} onClick={() => selectSource(preset.id)}>Saved {preset.label}</button>)}
           <button className={source === "upload" ? "selected" : ""} onClick={() => selectSource("upload")}>My files</button>
         </div>
         {source === "sample" && <p className="source-note">Illustrated sample sprite, included so you can try the tracking immediately.</p>}
-        {source === "saved" && <p className="source-note">Your last complete capture, restored from this browser.</p>}
+        {(source === "standard" || source === "dense") && <p className="source-note">Your complete {CAPTURE_PRESETS[source].label} capture, restored from this browser.</p>}
         {source === "upload" && <div className="upload-fields">
           <label>Sprite sheet <span>WebP, PNG or JPEG</span><input type="file" accept="image/webp,image/png,image/jpeg" onChange={onSpriteChange} /></label>
           <label>Manifest <span>JSON</span><input type="file" accept=".json,application/json" onChange={onManifestChange} /></label>
@@ -132,12 +135,6 @@ export function PortraitTester() {
         </div>}
         {uploadError && <p className="error" role="alert">{uploadError}</p>}
         {previewError && <p className="error" role="alert">{previewError}</p>}
-        <div className="transition-control">
-          <label htmlFor="transition-length">Frame blend <strong>{frameTransitionMs === 0 ? "Off" : `${frameTransitionMs} ms`}</strong></label>
-          <input id="transition-length" type="range" min="0" max="200" step="10" value={frameTransitionMs}
-            onChange={(event) => setFrameTransitionMs(Number(event.target.value))} />
-          <p>Short blends soften the steps. Longer blends can make a face look doubled.</p>
-        </div>
         <div className="tester-status"><span className={ready ? "status-ready" : ""} />{ready ? "PORTRAIT READY · MOVE YOUR CURSOR" : "WAITING FOR PORTRAIT"}</div>
       </section>
       <section className="tester-portrait" aria-label="Interactive portrait preview">
@@ -147,7 +144,6 @@ export function PortraitTester() {
             spriteSrc={spriteSrc}
             manifestSrc={manifestSrc}
             trackingMode="viewport"
-            frameTransitionMs={frameTransitionMs}
             ariaLabel="Portrait that follows the cursor"
             onReady={() => { setPreviewError(null); setReady(true); }}
             onError={(error) => { setReady(false); setPreviewError(error.message); }}

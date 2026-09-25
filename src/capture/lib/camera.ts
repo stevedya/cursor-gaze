@@ -1,4 +1,4 @@
-import { CAPTURE_CONFIG } from "../config";
+import type { CapturePreset } from "../config";
 
 export async function openCamera(): Promise<MediaStream> {
   if (!navigator.mediaDevices?.getUserMedia) {
@@ -27,11 +27,11 @@ export function getPortraitCrop(videoWidth: number, videoHeight: number) {
   return { x: (videoWidth - side) / 2, y: (videoHeight - side) / 2, width: side, height: side };
 }
 
-export function captureFrame(video: HTMLVideoElement): HTMLCanvasElement {
+export function captureFrame(video: HTMLVideoElement, preset: CapturePreset): HTMLCanvasElement {
   if (!video.videoWidth || !video.videoHeight) throw new Error("Camera video is not ready yet.");
   const canvas = document.createElement("canvas");
-  canvas.width = CAPTURE_CONFIG.frameWidth;
-  canvas.height = CAPTURE_CONFIG.frameHeight;
+  canvas.width = preset.frameWidth;
+  canvas.height = preset.frameHeight;
   const context = canvas.getContext("2d", { alpha: false });
   if (!context) throw new Error("Canvas is unavailable in this browser.");
   const crop = getPortraitCrop(video.videoWidth, video.videoHeight);

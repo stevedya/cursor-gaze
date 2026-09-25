@@ -23,11 +23,11 @@ it("calculates the sprite source rectangle", () => {
     .toEqual({ sourceX: 2000, sourceY: 1000 });
 });
 
-it("starts at center and visits every logical cell exactly once", () => {
-  const path = createCapturePath(7, 7);
-  expect(path).toHaveLength(49);
-  expect(path[0]).toMatchObject({ row: 3, column: 3 });
-  expect(new Set(path.map(({ row, column }) => `${row},${column}`)).size).toBe(49);
+it.each([7, 13])("starts at center and visits every cell of a %i × %i grid once", (size) => {
+  const path = createCapturePath(size, size);
+  expect(path).toHaveLength(size * size);
+  expect(path[0]).toMatchObject({ row: (size - 1) / 2, column: (size - 1) / 2 });
+  expect(new Set(path.map(({ row, column }) => `${row},${column}`)).size).toBe(size * size);
   for (let index = 1; index < path.length; index++) {
     const previous = path[index - 1];
     const current = path[index];
