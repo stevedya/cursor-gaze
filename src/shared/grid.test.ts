@@ -28,4 +28,9 @@ it("starts at center and visits every logical cell exactly once", () => {
   expect(path).toHaveLength(49);
   expect(path[0]).toMatchObject({ row: 3, column: 3 });
   expect(new Set(path.map(({ row, column }) => `${row},${column}`)).size).toBe(49);
+  for (let index = 1; index < path.length; index++) {
+    const previous = path[index - 1];
+    const current = path[index];
+    expect(Math.abs(current.row - previous.row) + Math.abs(current.column - previous.column)).toBe(1);
+  }
 });
