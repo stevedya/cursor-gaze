@@ -9,7 +9,9 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite. Camera access works on `localhost` or HTTPS. Grant camera permission, sit centered with some space around your head, and press **Start capture** (or Space). After a three-second countdown, follow the moving dot with your head and eyes. The path begins in the center and spirals outward, pausing at every target before taking a frame. Press Escape or **Cancel / reset** to stop.
+Open the local URL printed by Vite. Camera access works on `localhost` or HTTPS. Click **Enable camera** in the preview or control panel and accept the browser prompt. If permission was previously blocked, open the site controls beside the address bar, set Camera to Allow, and refresh. Sit centered with some space around your head, then press **Start capture** (or Space). After a three-second countdown, follow the moving dot with your head and eyes. The path begins in the center and spirals outward, pausing at every target before taking a frame.
+
+Each frame is saved automatically to IndexedDB in the current browser. Escape or **Pause and keep frames** stops the run without deleting photos. Refreshing restores a complete capture, or lets you resume at the remaining positions. **Delete saved session** asks for confirmation before clearing the frames. Browser storage is local to that browser and site; clearing site data or using another browser removes access to it. Downloaded files are the durable backup.
 
 Once all 49 positions are captured, review the sprite sheet. Click a thumbnail to retake that position. Download both files and put them together in your portfolio:
 
@@ -25,6 +27,14 @@ Some browsers cannot encode WebP from canvas. The tool then exports `portrait-sp
 Capture timing, grid size, output frame dimensions, and WebP quality live in [`src/capture/config.ts`](src/capture/config.ts). The default is a 500 × 500 frame, producing a 3500 × 3500 sprite. This is a practical browser size for a hero portrait; raise it if your final display needs more detail and the device can handle the memory. The camera requests roughly 1920 × 1080 and falls back to its default mode when needed.
 
 The preview and exported frames are both mirrored. With a front-facing webcam, following a target on the left then produces a portrait that appears to look left to the viewer. If your camera driver applies its own mirroring, check the completed grid before using it. The capture tool uses a centered square crop; sit consistently in frame throughout the session.
+
+## Test the portrait in the app
+
+Open **Test portrait** in the header, or visit `http://localhost:5173/#/tester` while the development server is running. The page has text on the left and a square canvas portrait on the right. Move your cursor anywhere in the page to test viewport tracking.
+
+Choose **Sample** for the included illustrated 7 × 7 sprite, **Saved capture** for a complete session stored in this browser, or **My files** to select your own sprite sheet and manifest. The uploader checks that the sprite dimensions match the manifest, then renders it with the same `CursorPortrait` component used on the production site. Uploaded files stay local to the browser tab and need to be selected again after a refresh.
+
+Captures made before automatic saving was added were held only in memory. If that earlier page was refreshed or reset before download, those frames cannot be restored by the new version.
 
 ## Use in a React or Next.js portfolio
 
@@ -84,7 +94,7 @@ npm test
 npm run build
 ```
 
-Pure logic tests cover mapping, clamping, source coordinates, and the full capture path. A live camera session still needs a person to verify framing and gaze direction on their own webcam.
+Tests cover mapping, clamping, source coordinates, the full capture path, and saving/restoring/deleting a frame in IndexedDB. A live camera session still needs a person to verify framing and gaze direction on their own webcam.
 
 ## Future improvements
 
