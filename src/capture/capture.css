@@ -34,6 +34,12 @@
 .source-switch button:hover:not(:disabled){color:#eaf4d4}
 .source-switch button:disabled{opacity:.38}
 .source-note{color:#8f9b8b;font-size:12px;line-height:1.6;min-height:40px;margin:0}
+.mapping-control{margin-top:26px}
+.mapping-control>span{display:block;color:#8e9887;font-size:10px;font-weight:700;letter-spacing:.16em;margin-bottom:11px}
+.mapping-control>div{display:flex;gap:8px}
+.mapping-control button{border:1px solid #ffffff29;background:#ffffff0c;color:#c5d0bf;padding:10px 13px;font-size:11px;font-weight:700}
+.mapping-control button.selected{border-color:#d7f083;background:#d7f0831a;color:#eaffb5}
+.mapping-control p{color:#8f9b8b;font-size:12px;line-height:1.55;max-width:410px;margin:11px 0 0}
 .upload-fields{display:grid;gap:16px;margin-bottom:12px}
 .upload-fields label{display:grid;gap:8px;color:#e1e8d9;font-size:12px;font-weight:700}
 .upload-fields label span{float:right;color:#8f9b8b;font-size:10px;font-weight:400}

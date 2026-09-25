@@ -1,12 +1,12 @@
 import { useEffect, useRef, type RefObject } from "react";
-import { clamp01, getSpriteSource, normalizedToCell } from "../shared/grid";
+import { clamp01, getSpriteSource, normalizePointerAroundPortrait, normalizedToCell } from "../shared/grid";
 import { parseManifest, type PortraitSpriteManifest } from "../shared/manifest";
 
 export type CursorPortraitProps = {
   spriteSrc: string;
   manifestSrc: string;
   className?: string;
-  trackingMode?: "viewport" | "element";
+  trackingMode?: "portrait" | "viewport" | "element";
   trackingElementRef?: RefObject<HTMLElement | null>;
   smoothing?: number;
   objectFit?: "contain" | "cover";
@@ -20,7 +20,7 @@ export function CursorPortrait({
   spriteSrc,
   manifestSrc,
   className,
-  trackingMode = "viewport",
+  trackingMode = "portrait",
   trackingElementRef,
   smoothing = 0.18,
   objectFit = "contain",
@@ -53,6 +53,7 @@ export function CursorPortrait({
     let currentY = 0.5;
     let targetX = 0.5;
     let targetY = 0.5;
+    let lastPointer: { x: number; y: number } | null = null;
     let lastRow = -1;
     let lastColumn = -1;
     let raf = 0;
@@ -121,17 +122,32 @@ export function CursorPortrait({
     };
 
     const schedule = () => { if (!raf) raf = requestAnimationFrame(animate); };
-    const returnToCenter = () => { targetX = targetY = 0.5; schedule(); };
+    const returnToCenter = () => { lastPointer = null; targetX = targetY = 0.5; schedule(); };
+    const updateTarget = (pointerX: number, pointerY: number) => {
+      const element = trackingMode === "element" ? trackingElementRef?.current ?? canvas.parentElement : null;
+      const rect = element?.getBoundingClientRect();
+      if (rect) {
+        targetX = clamp01((pointerX - rect.left) / rect.width);
+        targetY = clamp01((pointerY - rect.top) / rect.height);
+      } else if (trackingMode === "portrait") {
+        const point = normalizePointerAroundPortrait(pointerX, pointerY, canvas.getBoundingClientRect(), window.innerWidth, window.innerHeight);
+        targetX = point.x;
+        targetY = point.y;
+      } else {
+        targetX = clamp01(pointerX / window.innerWidth);
+        targetY = clamp01(pointerY / window.innerHeight);
+      }
+      schedule();
+    };
     const onPointerMove = (event: PointerEvent) => {
       if (event.pointerType !== "mouse" && event.pointerType !== "pen") return;
       if (motionQuery.matches || !pointerQuery.matches) return;
-      const element = trackingMode === "element" ? trackingElementRef?.current ?? canvas.parentElement : null;
-      const rect = element?.getBoundingClientRect();
-      const x = rect ? (event.clientX - rect.left) / rect.width : event.clientX / window.innerWidth;
-      const y = rect ? (event.clientY - rect.top) / rect.height : event.clientY / window.innerHeight;
-      targetX = clamp01(x);
-      targetY = clamp01(y);
-      schedule();
+      lastPointer = { x: event.clientX, y: event.clientY };
+      updateTarget(event.clientX, event.clientY);
+    };
+    const onViewportChange = () => {
+      resize();
+      if (lastPointer) updateTarget(lastPointer.x, lastPointer.y);
     };
     const onDocumentOut = (event: MouseEvent) => { if (!event.relatedTarget) returnToCenter(); };
     const onPolicyChange = () => { if (motionQuery.matches || !pointerQuery.matches) returnToCenter(); };
@@ -140,7 +156,8 @@ export function CursorPortrait({
     if (trackingMode === "element") area?.addEventListener("pointerleave", returnToCenter);
     else document.addEventListener("mouseout", onDocumentOut);
     window.addEventListener("blur", returnToCenter);
-    window.addEventListener("resize", resize);
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("scroll", onViewportChange, true);
     motionQuery.addEventListener("change", onPolicyChange);
     pointerQuery.addEventListener("change", onPolicyChange);
     const observer = new ResizeObserver(resize);
@@ -178,7 +195,8 @@ export function CursorPortrait({
       if (trackingMode === "element") area?.removeEventListener("pointerleave", returnToCenter);
       else document.removeEventListener("mouseout", onDocumentOut);
       window.removeEventListener("blur", returnToCenter);
-      window.removeEventListener("resize", resize);
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("scroll", onViewportChange, true);
       motionQuery.removeEventListener("change", onPolicyChange);
       pointerQuery.removeEventListener("change", onPolicyChange);
     };

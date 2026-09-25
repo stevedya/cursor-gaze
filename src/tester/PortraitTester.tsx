@@ -32,6 +32,7 @@ export function PortraitTester() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [trackingMode, setTrackingMode] = useState<"portrait" | "viewport">("portrait");
 
   useEffect(() => {
     let cancelled = false;
@@ -133,6 +134,11 @@ export function PortraitTester() {
           <label>Manifest <span>JSON</span><input type="file" accept=".json,application/json" onChange={onManifestChange} /></label>
           <p className="source-note">Files stay in this browser. Select both files to show your portrait.</p>
         </div>}
+        <div className="mapping-control" role="group" aria-label="Gaze mapping">
+          <span>GAZE MAPPING</span>
+          <div><button aria-pressed={trackingMode === "portrait"} className={trackingMode === "portrait" ? "selected" : ""} onClick={() => setTrackingMode("portrait")}>Auto position</button><button aria-pressed={trackingMode === "viewport"} className={trackingMode === "viewport" ? "selected" : ""} onClick={() => setTrackingMode("viewport")}>Full page</button></div>
+          <p>{trackingMode === "portrait" ? "The portrait's center is the neutral gaze point. Cursor movement scales to the space on each side." : "Cursor movement maps directly to the full page width and height."}</p>
+        </div>
         {uploadError && <p className="error" role="alert">{uploadError}</p>}
         {previewError && <p className="error" role="alert">{previewError}</p>}
         <div className="tester-status"><span className={ready ? "status-ready" : ""} />{ready ? "PORTRAIT READY · MOVE YOUR CURSOR" : "WAITING FOR PORTRAIT"}</div>
@@ -143,7 +149,7 @@ export function PortraitTester() {
             key={`${source}:${spriteSrc}`}
             spriteSrc={spriteSrc}
             manifestSrc={manifestSrc}
-            trackingMode="viewport"
+            trackingMode={trackingMode}
             ariaLabel="Portrait that follows the cursor"
             onReady={() => { setPreviewError(null); setReady(true); }}
             onError={(error) => { setReady(false); setPreviewError(error.message); }}
